@@ -1,18 +1,24 @@
 import { useState } from 'react';
 import './App.css';
 
+/** Memory mode: discrete GPU or unified memory. */
 type MemoryMode = 'DISCRETE_GPU' | 'UNIFIED_MEMORY';
 
-type Quantization =
-  | 'FP32'
-  | 'FP16'
-  | 'INT8'
-  | 'INT6'
-  | 'INT4'
-  | 'INT3'
-  | 'INT2'
+/** Model quantization set: F32, F16, Q8, Q6, Q5, Q4, Q3, Q2, GPTQ, AWQ. */
+type ModelQuantization =
+  | 'F32'
+  | 'F16'
+  | 'Q8'
+  | 'Q6'
+  | 'Q5'
+  | 'Q4'
+  | 'Q3'
+  | 'Q2'
   | 'GPTQ'
   | 'AWQ';
+
+/** KV cache quantization: F32, F16, Q8, Q5, Q4. */
+type KvCacheQuantization = 'F32' | 'F16' | 'Q8' | 'Q5' | 'Q4';
 
 /** Recommendation for final output. */
 interface Recommendation {
@@ -25,64 +31,90 @@ interface Recommendation {
 
 function App() {
   // -----------------------------------
-  // 1. STATE: Single-user inference
+  // 1. STATE
   // -----------------------------------
-  const [params, setParams] = useState<number>(65); // Billions of parameters
-  const [quantization, setQuantization] = useState<Quantization>('INT4');
-  const [contextLength, setContextLength] = useState<number>(4096);
-  const [useKvCache, setUseKvCache] = useState<boolean>(true);
 
+  // Model config
+  const [params, setParams] = useState<number>(65); // Billions of parameters
+  const [modelQuant, setModelQuant] = useState<ModelQuantization>('Q4');
+
+  // KV Cache
+  const [useKvCache, setUseKvCache] = useState<boolean>(true);
+  const [kvCacheQuant, setKvCacheQuant] = useState<KvCacheQuantization>('F16');
+
+  // Misc
+  const [contextLength, setContextLength] = useState<number>(4096);
   const [memoryMode, setMemoryMode] = useState<MemoryMode>('DISCRETE_GPU');
   const [systemMemory, setSystemMemory] = useState<number>(128); // in GB
 
   // -----------------------------------
   // 2. HELPER FUNCTIONS
   // -----------------------------------
-  /** Bits per parameter ratio for VRAM usage in inference. */
-  const getQuantizationFactor = (q: Quantization): number => {
+
+  // (A) Bits-based multiplier for the main model
+  const getModelQuantFactor = (q: ModelQuantization): number => {
     switch (q) {
-      case 'FP32': return 4.0;   
-      case 'FP16': return 2.0;   
-      case 'INT8': return 1.0;   
-      case 'INT6': return 0.75;  
-      case 'INT4': return 0.5;   
-      case 'INT3': return 0.375; 
-      case 'INT2': return 0.25;  
-      case 'GPTQ': return 0.4;   
-      case 'AWQ':  return 0.35;  
-      default:     return 1.0;   
+      case 'F32': return 4.0;  
+      case 'F16': return 2.0;  
+      case 'Q8':  return 1.0;  
+      case 'Q6':  return 0.75; 
+      case 'Q5':  return 0.625;
+      case 'Q4':  return 0.5;  
+      case 'Q3':  return 0.375; 
+      case 'Q2':  return 0.25;  
+      case 'GPTQ':return 0.4;  
+      case 'AWQ': return 0.35; 
+      default:    return 1.0;   // fallback
+    }
+  };
+
+  // (B) Bits-based multiplier for KV cache
+  // F32, F16, Q8, Q5, Q4
+  const getKvCacheQuantFactor = (k: KvCacheQuantization): number => {
+    switch (k) {
+      case 'F32': return 4.0;  
+      case 'F16': return 2.0;  
+      case 'Q8':  return 1.0;  
+      case 'Q5':  return 0.625; 
+      case 'Q4':  return 0.5;  
+      default:    return 1.0;   // fallback
     }
   };
 
   /**
-   * Approximates the required VRAM (GB) for single-user inference (batch=1).
-   *   baseVRAM = (params × quantFactor) × contextLength factor × KV Cache overhead
+   * (C) Calculate VRAM for single-user inference.
+   * Split into Model Memory + KV Cache Memory.
    */
   const calculateRequiredVram = (): number => {
-    const quantFactor = getQuantizationFactor(quantization);
-    const baseVram = params * quantFactor;
+    // 1) Model memory
+    const modelFactor = getModelQuantFactor(modelQuant);
+    const baseModelMem = params * modelFactor; // GB if 1B params
 
-    // Increase memory usage with context length
+    // 2) Context scaling (just as before)
     let contextScale = contextLength / 2048;
     if (contextScale < 1) contextScale = 1;
+    const modelMem = baseModelMem * contextScale;
 
-    // KV cache overhead
-    const kvCacheFactor = useKvCache ? 1.2 : 1.0;
+    // 3) KV cache memory (if enabled)
+    let kvCacheMem = 0;
+    if (useKvCache) {
+      const kvFactor = getKvCacheQuantFactor(kvCacheQuant);
+      const alpha = 0.2; // fraction representing typical KV overhead
+      kvCacheMem = params * kvFactor * contextScale * alpha;
+    }
 
-    // No explicit batch size here (it's effectively = 1)
-    const totalVram = baseVram * contextScale * kvCacheFactor;
-    return totalVram; // in GB
+    // 4) total
+    return modelMem + kvCacheMem;
   };
 
-  /** For unified memory, up to 75% of system RAM can be used as VRAM. */
+  // For unified memory, up to 75% of system RAM can be used as VRAM
   const getMaxUnifiedVram = (memGB: number): number => memGB * 0.75;
 
-  /** Decide discrete GPU vs. unified memory usage. */
+  // Decide discrete GPU vs. unified memory usage
   const calculateHardwareRecommendation = (): Recommendation => {
     const requiredVram = calculateRequiredVram();
     const recSystemMemory = systemMemory;
 
-    // A) Unified Memory
     if (memoryMode === 'UNIFIED_MEMORY') {
       const unifiedLimit = getMaxUnifiedVram(recSystemMemory);
       if (requiredVram <= unifiedLimit) {
@@ -104,8 +136,7 @@ function App() {
       }
     }
 
-    // B) Discrete GPU
-    // Assume single GPU has 24GB VRAM (e.g., RTX 3090/4090).
+    // Discrete GPU
     const singleGpuVram = 24;
     if (requiredVram <= singleGpuVram) {
       return {
@@ -116,7 +147,7 @@ function App() {
         gpusRequired: 1,
       };
     } else {
-      // multiple GPUs needed
+      // multiple GPUs
       const count = Math.ceil(requiredVram / singleGpuVram);
       return {
         gpuType: 'Discrete GPUs (24GB each)',
@@ -128,20 +159,21 @@ function App() {
     }
   };
 
-  /** Estimate on-disk model size (GB). */
+  /** Estimate on-disk model size (GB). We do NOT factor in KV here. */
   const calculateOnDiskSize = (): number => {
     let bitsPerParam: number;
-    switch (quantization) {
-      case 'FP32': bitsPerParam = 32; break;
-      case 'FP16': bitsPerParam = 16; break;
-      case 'INT8': bitsPerParam = 8;  break;
-      case 'INT6': bitsPerParam = 6;  break;
-      case 'INT4': bitsPerParam = 4;  break;
-      case 'INT3': bitsPerParam = 3;  break;
-      case 'INT2': bitsPerParam = 2;  break;
-      case 'GPTQ': bitsPerParam = 4;  break;
-      case 'AWQ':  bitsPerParam = 4;  break;
-      default:     bitsPerParam = 8;  break;
+    switch (modelQuant) {
+      case 'F32': bitsPerParam = 32; break;
+      case 'F16': bitsPerParam = 16; break;
+      case 'Q8':  bitsPerParam = 8;  break;
+      case 'Q6':  bitsPerParam = 6;  break;
+      case 'Q5':  bitsPerParam = 5;  break;
+      case 'Q4':  bitsPerParam = 4;  break;
+      case 'Q3':  bitsPerParam = 3;  break;
+      case 'Q2':  bitsPerParam = 2;  break;
+      case 'GPTQ':bitsPerParam = 4;  break;
+      case 'AWQ': bitsPerParam = 4;  break;
+      default:    bitsPerParam = 8;  break;
     }
 
     const totalBits = params * 1e9 * bitsPerParam;
@@ -161,7 +193,9 @@ function App() {
     <div className="App">
       <h1>LLM Inference Hardware Calculator</h1>
       <p className="intro-text">
-        Estimates VRAM & System RAM for single-user inference (Batch = 1).
+        Estimate VRAM & System RAM for single-user inference (Batch=1).
+        <br />
+        Model quant & KV cache quant are configured separately.
       </p>
 
       <div className="layout">
@@ -180,18 +214,20 @@ function App() {
             onChange={(e) => setParams(Number(e.target.value))}
           />
 
-          <label className="label-range">Quantization:</label>
+          <label className="label-range">Model Quantization:</label>
           <select
-            value={quantization}
-            onChange={(e) => setQuantization(e.target.value as Quantization)}
+            value={modelQuant}
+            onChange={(e) => setModelQuant(e.target.value as ModelQuantization)}
           >
-            <option value="FP32">FP32</option>
-            <option value="FP16">FP16</option>
-            <option value="INT8">INT8</option>
-            <option value="INT6">INT6</option>
-            <option value="INT4">INT4</option>
-            <option value="INT3">INT3</option>
-            <option value="INT2">INT2</option>
+            {/* F32, F16, Q8, Q6, Q5, Q4, Q3, Q2, GPTQ, AWQ */}
+            <option value="F32">F32</option>
+            <option value="F16">F16</option>
+            <option value="Q8">Q8</option>
+            <option value="Q6">Q6</option>
+            <option value="Q5">Q5</option>
+            <option value="Q4">Q4</option>
+            <option value="Q3">Q3</option>
+            <option value="Q2">Q2</option>
             <option value="GPTQ">GPTQ</option>
             <option value="AWQ">AWQ</option>
           </select>
@@ -208,6 +244,7 @@ function App() {
             onChange={(e) => setContextLength(Number(e.target.value))}
           />
 
+          {/* KV Cache Toggle */}
           <div className="checkbox-row">
             <input
               type="checkbox"
@@ -215,10 +252,29 @@ function App() {
               onChange={() => setUseKvCache(!useKvCache)}
               id="kvCache"
             />
-            <label htmlFor="kvCache">
-              Enable KV Cache
-            </label>
+            <label htmlFor="kvCache">Enable KV Cache</label>
           </div>
+
+          {/* 
+             (Animated) KV Cache Quant Section:
+             We'll wrap it in a div that transitions "max-height"
+             so the UI doesn't jump abruptly.
+          */}
+<div className={`kvCacheAnimate ${useKvCache ? "open" : "closed"}`}>
+  <label className="label-range">KV Cache Quantization:</label>
+  <select
+    value={kvCacheQuant}
+    onChange={(e) => setKvCacheQuant(e.target.value as KvCacheQuantization)}
+  >
+    <option value="F32">F32</option>
+    <option value="F16">F16</option>
+    <option value="Q8">Q8</option>
+    <option value="Q5">Q5</option>
+    <option value="Q4">Q4</option>
+  </select>
+</div>
+
+
 
           <hr style={{ margin: '1rem 0' }} />
 
@@ -261,7 +317,7 @@ function App() {
             <span className="result-highlight">{onDiskSize.toFixed(2)} GB</span>
           </p>
           <p>
-            <strong>GPU Configuration:</strong> {recommendation.gpuType}
+            <strong>GPU Config:</strong> {recommendation.gpuType}
           </p>
 
           {recommendation.gpusRequired > 1 && (
@@ -276,7 +332,7 @@ function App() {
           )}
 
           <p>
-            <strong>Minimum System RAM:</strong>{" "}
+            <strong>System RAM:</strong>{" "}
             {recommendation.systemRamNeeded.toFixed(1)} GB
           </p>
 

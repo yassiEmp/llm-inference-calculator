@@ -27,7 +27,7 @@ body {
 /* Outer container: up to 1200px, horizontally centered */
 .App {
   max-width: 1200px;
-  margin: 0 auto;     /* center the entire block in the window */
+  margin: 0 auto; /* center the entire block in the window */
   padding: 2rem;
   box-sizing: border-box;
   width: 100%;
@@ -78,13 +78,13 @@ body {
 @media (max-width: 850px) {
   .layout {
     flex-direction: column;
-    width: 100%;        /* revert to full container width in single-column */
+    width: 100%; /* revert to full container width in single-column */
     margin: 0 auto;
   }
 
   .input-panel,
   .results-panel {
-    width: 100%;        /* each column takes full width in single-column mode */
+    width: 100%; /* each column takes full width in single-column mode */
     margin: 0 auto;
     max-height: initial;
   }
@@ -155,4 +155,35 @@ select {
 .section-title {
   margin-top: 0;
   margin-bottom: 1rem;
+}
+
+/* ---------------------------------------
+   Expand / Collapse Animation for KV Cache
+   ---------------------------------------- */
+
+/* 
+   We'll use max-height + opacity to animate the expansion/collapse.
+   The 'closed' state is hidden with max-height: 0; and opacity: 0.
+   The 'open' state expands to max-height: 200px (adjust as needed)
+   and opacity: 1.
+*/
+/* Expand / Collapse Animation for KV Cache */
+.kvCacheAnimate {
+  overflow: hidden;
+  /* Moved transitions to here so it applies on all state changes */
+  transition:
+    max-height 0.3s ease-in-out,
+    opacity 0.3s ease-in-out;
+}
+
+/* "open" state: expanded */
+.kvCacheAnimate.open {
+  max-height: 200px; /* adjust this to fit your content */
+  opacity: 1;
+}
+
+/* "closed" state: collapsed */
+.kvCacheAnimate.closed {
+  max-height: 0;
+  opacity: 0;
 }
