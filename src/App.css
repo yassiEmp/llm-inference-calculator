@@ -62,7 +62,7 @@ body {
 
 /* Right panel: a smaller fixed width, so it won't stretch 100% either */
 .results-panel {
-  width: 300px; /* narrower column */
+  width: 440px; /* narrower column */
   position: sticky;
   top: 1rem;
   align-self: start;
