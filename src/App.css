@@ -10,6 +10,9 @@
   --card-border: #ddd;
   --border-radius: 8px;
 }
+*{
+  box-sizing: border-box;
+}
 
 #root {
   width: 100%;
