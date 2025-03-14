@@ -1,55 +1,70 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Slider } from "@/components/ui/slider"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ResultsDisplay } from "@/components/results-display"
-import { ModelPresets } from "@/components/model-presets"
-import { GPUSelector } from "@/components/gpu-selector"
-import { QuantizationComparison } from "@/components/quantization-comparison"
-import { InferenceSpeedEstimator } from "@/components/inference-speed-estimator"
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ResultsDisplay } from "@/components/results-display";
+import { ModelPresets } from "@/components/model-presets";
+import { GPUSelector } from "@/components/gpu-selector";
+import { QuantizationComparison } from "@/components/quantization-comparison";
+import { InferenceSpeedEstimator } from "@/components/inference-speed-estimator";
 
 export function Calculator() {
   // Model parameters
-  const [modelSize, setModelSize] = useState(7)
-  const [contextLength, setContextLength] = useState(4096)
-  const [quantizationMethod, setQuantizationMethod] = useState("fp16")
-  const [enableKVCache, setEnableKVCache] = useState(true)
-  const [batchSize, setBatchSize] = useState(1)
+  const [modelSize, setModelSize] = useState(7);
+  const [contextLength, setContextLength] = useState(4096);
+  const [quantizationMethod, setQuantizationMethod] = useState("fp16");
+  const [enableKVCache, setEnableKVCache] = useState(true);
+  const [batchSize, setBatchSize] = useState(1);
 
   // Hardware parameters
-  const [gpuModel, setGpuModel] = useState("rtx4090")
-  const [systemRAM, setSystemRAM] = useState(32)
-  const [unifiedMemory, setUnifiedMemory] = useState(false)
+  const [gpuModel, setGpuModel] = useState("rtx4090");
+  const [systemRAM, setSystemRAM] = useState(32);
+  const [unifiedMemory, setUnifiedMemory] = useState(false);
 
   // Calculation results
-  const [vramRequired, setVramRequired] = useState(0)
-  const [systemRAMRequired, setSystemRAMRequired] = useState(0)
-  const [diskSpace, setDiskSpace] = useState(0)
-  const [gpusNeeded, setGpusNeeded] = useState(1)
-  const [inferenceSpeed, setInferenceSpeed] = useState(0)
+  const [vramRequired, setVramRequired] = useState(0);
+  const [systemRAMRequired, setSystemRAMRequired] = useState(0);
+  const [diskSpace, setDiskSpace] = useState(0);
+  const [gpusNeeded, setGpusNeeded] = useState(1);
+  const [inferenceSpeed, setInferenceSpeed] = useState(0);
 
   // Calculate requirements whenever inputs change
   useEffect(() => {
-    calculateRequirements()
-  }, [modelSize, contextLength, quantizationMethod, enableKVCache, batchSize, gpuModel, systemRAM, unifiedMemory])
+    calculateRequirements();
+  }, [
+    modelSize,
+    contextLength,
+    quantizationMethod,
+    enableKVCache,
+    batchSize,
+    gpuModel,
+    systemRAM,
+    unifiedMemory,
+  ]);
 
   // Apply model preset
   const applyModelPreset = (preset: {
-    name: string
-    parameters: number
-    defaultQuantization: string
-    defaultContext: number
+    name: string;
+    parameters: number;
+    defaultQuantization: string;
+    defaultContext: number;
   }) => {
-    setModelSize(preset.parameters)
-    setQuantizationMethod(preset.defaultQuantization)
-    setContextLength(preset.defaultContext)
-  }
+    setModelSize(preset.parameters);
+    setQuantizationMethod(preset.defaultQuantization);
+    setContextLength(preset.defaultContext);
+  };
 
   // Calculate hardware requirements
   const calculateRequirements = () => {
@@ -62,33 +77,35 @@ export function Calculator() {
         int8: 1,
         int4: 0.5,
         gptq: 0.5, // Approximation
-      }[quantizationMethod] || 2
+      }[quantizationMethod] || 2;
 
     // Model size in bytes (parameters in billions)
-    const modelSizeBytes = modelSize * 1000000000 * bytesPerParameter
+    const modelSizeBytes = modelSize * 1000000000 * bytesPerParameter;
 
     // KV cache size calculation
-    let kvCacheSize = 0
+    let kvCacheSize = 0;
     if (enableKVCache) {
       // KV cache size depends on context length, batch size, and model dimensions
       // This is a simplified approximation
-      const headDim = 128 // Typical value
-      const numHeads = Math.ceil((modelSize * 1000000000) / (4 * 768 * 768)) // Approximation
-      kvCacheSize = 2 * numHeads * headDim * contextLength * batchSize * 2 // 2 for K and V, 2 bytes for fp16
+      const headDim = 128; // Typical value
+      const numHeads = Math.ceil((modelSize * 1000000000) / (4 * 768 * 768)); // Approximation
+      kvCacheSize = 2 * numHeads * headDim * contextLength * batchSize * 2; // 2 for K and V, 2 bytes for fp16
     }
 
     // Total VRAM required
-    const totalVramBytes = modelSizeBytes + kvCacheSize
-    const totalVramGB = totalVramBytes / (1024 * 1024 * 1024)
-    setVramRequired(totalVramGB)
+    const totalVramBytes = modelSizeBytes + kvCacheSize;
+    const totalVramGB = totalVramBytes / (1024 * 1024 * 1024);
+    setVramRequired(totalVramGB);
 
     // System RAM required (typically 2-3x the model size for overhead)
-    const ramRequired = totalVramGB * 1.5
-    setSystemRAMRequired(ramRequired)
+    const ramRequired = totalVramGB * 1.5;
+    setSystemRAMRequired(ramRequired);
 
     // Disk space required (model size plus overhead)
-    const diskSpaceGB = ((modelSize * 1000000000 * bytesPerParameter) / (1024 * 1024 * 1024)) * 1.1
-    setDiskSpace(diskSpaceGB)
+    const diskSpaceGB =
+      ((modelSize * 1000000000 * bytesPerParameter) / (1024 * 1024 * 1024)) *
+      1.1;
+    setDiskSpace(diskSpaceGB);
 
     // Number of GPUs needed
     const gpuVramSizes = {
@@ -105,14 +122,15 @@ export function Calculator() {
       l4: 24,
       a30: 24,
       a40: 48,
-    }
+    };
 
-    const selectedGpuVram = gpuVramSizes[gpuModel as keyof typeof gpuVramSizes] || 24
+    const selectedGpuVram =
+      gpuVramSizes[gpuModel as keyof typeof gpuVramSizes] || 24;
     const gpusNeededCalc = unifiedMemory
       ? Math.ceil(totalVramGB / (systemRAM * 0.75))
-      : Math.ceil(totalVramGB / selectedGpuVram)
+      : Math.ceil(totalVramGB / selectedGpuVram);
 
-    setGpusNeeded(gpusNeededCalc)
+    setGpusNeeded(gpusNeededCalc);
 
     // Inference speed estimation (tokens per second)
     // This is a very rough approximation based on model size and GPU
@@ -130,7 +148,7 @@ export function Calculator() {
       l4: 0.9,
       a30: 1.1,
       a40: 1.3,
-    }
+    };
 
     const quantizationSpeedFactor =
       {
@@ -140,15 +158,21 @@ export function Calculator() {
         int8: 1.5,
         int4: 2.0,
         gptq: 1.8,
-      }[quantizationMethod] || 1.0
+      }[quantizationMethod] || 1.0;
 
-    const speedFactor = gpuSpeedFactors[gpuModel as keyof typeof gpuSpeedFactors] || 1.0
-    const baseSpeed = 30 // Base tokens per second for a 7B model on RTX 3090 with FP16
+    const speedFactor =
+      gpuSpeedFactors[gpuModel as keyof typeof gpuSpeedFactors] || 1.0;
+    const baseSpeed = 30; // Base tokens per second for a 7B model on RTX 3090 with FP16
 
-    const modelSizeFactor = 7 / modelSize // Smaller models are faster
-    const inferenceSpeedCalc = baseSpeed * speedFactor * quantizationSpeedFactor * modelSizeFactor * gpusNeededCalc
-    setInferenceSpeed(inferenceSpeedCalc)
-  }
+    const modelSizeFactor = 7 / modelSize; // Smaller models are faster
+    const inferenceSpeedCalc =
+      baseSpeed *
+      speedFactor *
+      quantizationSpeedFactor *
+      modelSizeFactor *
+      gpusNeededCalc;
+    setInferenceSpeed(inferenceSpeedCalc);
+  };
 
   return (
     <div className="space-y-6">
@@ -162,7 +186,9 @@ export function Calculator() {
 
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <Label htmlFor="model-size">Model Size (billions of parameters)</Label>
+                  <Label htmlFor="model-size">
+                    Model Size (billions of parameters)
+                  </Label>
                   <span className="text-sm font-medium">{modelSize}B</span>
                 </div>
                 <div className="flex space-x-2">
@@ -188,7 +214,9 @@ export function Calculator() {
 
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <Label htmlFor="context-length">Context Length (tokens)</Label>
+                  <Label htmlFor="context-length">
+                    Context Length (tokens)
+                  </Label>
                   <span className="text-sm font-medium">{contextLength}</span>
                 </div>
                 <div className="flex space-x-2">
@@ -214,23 +242,34 @@ export function Calculator() {
 
               <div className="space-y-2">
                 <Label htmlFor="quantization">Quantization Method</Label>
-                <Select value={quantizationMethod} onValueChange={setQuantizationMethod}>
+                <Select
+                  value={quantizationMethod}
+                  onValueChange={setQuantizationMethod}
+                >
                   <SelectTrigger id="quantization">
                     <SelectValue placeholder="Select quantization" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="fp32">FP32 (32-bit float)</SelectItem>
                     <SelectItem value="fp16">FP16 (16-bit float)</SelectItem>
-                    <SelectItem value="bf16">BF16 (16-bit brain float)</SelectItem>
+                    <SelectItem value="bf16">
+                      BF16 (16-bit brain float)
+                    </SelectItem>
                     <SelectItem value="int8">INT8 (8-bit integer)</SelectItem>
                     <SelectItem value="int4">INT4 (4-bit integer)</SelectItem>
-                    <SelectItem value="gptq">GPTQ (optimized quantization)</SelectItem>
+                    <SelectItem value="gptq">
+                      GPTQ (optimized quantization)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="flex items-center space-x-2">
-                <Switch id="kv-cache" checked={enableKVCache} onCheckedChange={setEnableKVCache} />
+                <Switch
+                  id="kv-cache"
+                  checked={enableKVCache}
+                  onCheckedChange={setEnableKVCache}
+                />
                 <Label htmlFor="kv-cache">Enable KV Cache</Label>
               </div>
 
@@ -265,7 +304,9 @@ export function Calculator() {
 
         <Card>
           <CardContent className="pt-6">
-            <h2 className="text-xl font-semibold mb-4">Hardware Configuration</h2>
+            <h2 className="text-xl font-semibold mb-4">
+              Hardware Configuration
+            </h2>
 
             <div className="space-y-6">
               <div className="space-y-2">
@@ -274,8 +315,14 @@ export function Calculator() {
               </div>
 
               <div className="flex items-center space-x-2">
-                <Switch id="unified-memory" checked={unifiedMemory} onCheckedChange={setUnifiedMemory} />
-                <Label htmlFor="unified-memory">Unified Memory System (Apple Silicon, etc.)</Label>
+                <Switch
+                  id="unified-memory"
+                  checked={unifiedMemory}
+                  onCheckedChange={setUnifiedMemory}
+                />
+                <Label htmlFor="unified-memory">
+                  Unified Memory System (Apple Silicon, etc.)
+                </Label>
               </div>
 
               {unifiedMemory && (
@@ -311,7 +358,7 @@ export function Calculator() {
       </div>
 
       <Tabs defaultValue="results" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-3">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="results">Results</TabsTrigger>
           <TabsTrigger value="comparison">Quantization Comparison</TabsTrigger>
           <TabsTrigger value="inference">Inference Speed</TabsTrigger>
@@ -347,6 +394,5 @@ export function Calculator() {
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }
-
